@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: handvision3d
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: MAX_HANDS
+        value: 2
+      - key: JPEG_QUALITY
+        value: 65
