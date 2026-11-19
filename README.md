@@ -1,102 +1,49 @@
-# HandVision 3D — Etapa 1
+# HandVision 3D
 
-Aplicación web para detectar hasta dos manos mediante Python, OpenCV y MediaPipe, y transmitir los datos articulares al navegador. La interfaz no dibuja ni muestra los landmarks. En esta etapa se prepara el flujo de captura y datos; el renderizado anatómico con Three.js y los modelos GLB se incorporarán en la Etapa 3.
+Aplicación web de seguimiento bilateral de manos con Python, FastAPI, MediaPipe Tasks y Three.js. La cámara se captura en el navegador; los fotogramas JPEG se envían por WebSocket al backend y la pose estimada anima dos modelos 3D en el navegador.
 
-## Requisitos
+## Funciones
+- Detección de hasta dos manos.
+- Flexión estimada de articulaciones MCP/PIP/DIP (pulgar: MCP/IP).
+- Orientación de palma mediante quaternion y ángulos Euler.
+- Gestos geométricos: palma abierta, puño, pinza y señalar.
+- Suavizado temporal de pose.
+- Modelos 3D procedurales con palma, dedos, volumen de articulaciones y uñas; sin landmarks ni esqueletos visibles.
+- Indicadores de cámara, FPS, resolución, latencia aproximada y telemetría por dedo.
+- Evento `handvision:pose` y `window.handVisionLatestPose` para integraciones adicionales.
 
-- Python 3.11
-- Cámara web
-- Google Chrome, Edge o Firefox actualizado
-- Conexión a Internet durante la primera ejecución para descargar el modelo de MediaPipe
-
-## Ejecutar localmente en Windows
-
-Abre PowerShell en la carpeta del proyecto:
-
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Si PowerShell bloquea la activación del entorno, ejecuta:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-```
-
-Abre `http://127.0.0.1:8000`. Acepta el permiso de cámara y pulsa **Iniciar cámara**.
-
-## Ejecutar localmente en macOS o Linux
+## Requisitos y ejecución local
+Python 3.11, pip y navegador moderno. Se requiere internet la primera vez para descargar el modelo MediaPipe y para cargar Three.js desde CDN.
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
+python -m venv .venv
+# Windows: .venv\\Scripts\\activate
+# macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn backend.main:app --reload
+```
+Abre http://127.0.0.1:8000 y concede permiso de cámara. Los navegadores permiten cámara en localhost o en un sitio HTTPS.
+
+## Render + GitHub
+1. Sube el contenido del repositorio a GitHub.
+2. Crea un Web Service en Render conectado al repositorio.
+3. Render utilizará el Dockerfile y `render.yaml`.
+4. Espera el despliegue y abre la URL HTTPS para conceder permiso de cámara.
+5. El modelo `hand_landmarker.task` se descarga automáticamente al iniciar el backend y se almacena en `mediapipe_models/`.
+
+Se recomienda un plan de Render con memoria suficiente para MediaPipe. Los planes gratuitos pueden suspender servicios y limitar la fluidez. Si el sistema de archivos es efímero, el modelo se volverá a descargar en cada arranque.
+
+## Endpoints y datos
+- `GET /health`: estado del servicio.
+- `WS /ws`: recibe JSON `{ "type": "frame", "image": "data:image/jpeg;base64,..." }` y devuelve mensajes `type: pose` con `hands[]`.
+- Cada mano contiene `label`, `confidence`, `position`, `orientation.quaternion`, `orientation.euler`, `fingers`, `pinch_ratio` y `gesture`.
+
+```javascript
+window.addEventListener('handvision:pose', (event) => {
+  const { hands, hand_count } = event.detail;
+  // Integrar datos en otros componentes Three.js.
+});
 ```
 
-## Endpoints
-
-- `GET /` — interfaz web.
-- `GET /health` — health check para Render.
-- `GET /api/status` — estado del detector.
-- `WS /ws` — recibe fotogramas JPEG codificados en base64 y devuelve detecciones.
-
-## Publicar en GitHub
-
-Crea un repositorio vacío llamado `HandVision3D`. Desde la carpeta del proyecto:
-
-```bash
-git init
-git add .
-git commit -m "HandVision 3D - Etapa 1"
-git branch -M main
-git remote add origin https://github.com/TU_USUARIO/HandVision3D.git
-git push -u origin main
-```
-
-Sustituye `TU_USUARIO` por tu usuario real de GitHub. No subas el entorno `.venv` ni el modelo descargado.
-
-## Desplegar en Render
-
-1. Sube el repositorio a GitHub.
-2. En Render selecciona **New + > Blueprint** o crea un Web Service conectado al repositorio.
-3. Si usas Blueprint, Render leerá `render.yaml`.
-4. Si creas el servicio manualmente:
-   - Runtime: Docker (recomendado; usa el `Dockerfile` incluido)
-   - Dockerfile path: `./Dockerfile`
-   - Docker context: `.`
-5. Espera a que termine el despliegue y abre la URL HTTPS asignada.
-6. Acepta el permiso de cámara del navegador.
-
-La cámara se captura en el navegador del visitante. Los fotogramas se envían por WebSocket al backend Python. El navegador debe usar HTTPS en producción para permitir el acceso a la cámara.
-
-## Comprobar el servicio
-
-Abre `/health` y verifica una respuesta similar a:
-
-```json
-{"status":"ok","application":"HandVision 3D","version":"0.1.0"}
-```
-
-Abre `/api/status`; cuando el modelo termine de iniciar, `status` debe ser `ready`.
-
-## Consideraciones de esta etapa
-
-- Se procesan como máximo dos manos.
-- Cada mano produce 21 puntos internos y ángulos articulares aproximados.
-- No se dibujan landmarks sobre la vista de cámara ni sobre el área 3D.
-- La vista previa de cámara sí se muestra en un panel pequeño.
-- La etapa 1 no incluye todavía modelos anatómicos ni animación 3D.
-- Se instala `opencv-contrib-python` porque MediaPipe 0.10.21 declara la variante contrib como dependencia; no mezcles paquetes OpenCV distintos en el mismo entorno.
-- El plan gratuito de Render puede tener recursos limitados y suspender servicios inactivos; la primera petición puede tardar mientras el servicio despierta.
-- El modelo MediaPipe se descarga al iniciar el backend. El servicio necesita acceso saliente a Internet durante esa descarga.
-
-## Tecnologías
-
-Python · OpenCV · MediaPipe Tasks · FastAPI · WebSocket · HTML · CSS · JavaScript
+## Limitaciones técnicas
+Los ángulos y gestos son estimaciones basadas en los landmarks de MediaPipe, no mediciones clínicas. Los modelos 3D son mallas procedurales estilizadas con volumen y materiales de apariencia cutánea; no son escaneos anatómicos hiperrealistas ni modelos médicos. La orientación de mano depende de la perspectiva y visibilidad. La latencia varía según equipo, conexión y recursos del servidor. El vídeo no se almacena: se procesa como flujo de fotogramas.
